@@ -1,39 +1,53 @@
 import { useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Loader2, Server } from 'lucide-react';
 
 interface TextAnalyzerProps {
-  onStressUpdate: (score: number) => void; // Function to tell the parent App the new score
+  onStressUpdate: (score: number) => void;
 }
 
 export function TextAnalyzer({ onStressUpdate }: TextAnalyzerProps) {
   const [text, setText] = useState('');
-  const [result, setResult] = useState<null | { score: number, words: string[] }>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<null | { score: number, keywords: string[] }>(null);
+  const [error, setError] = useState('');
 
-  const analyze = () => {
-    const lowerText = text.toLowerCase();
-    const stressWords = ['anxious', 'fail', 'panic', 'overwhelmed', 'scared', 'tired'];
-    const calmWords = ['happy', 'confident', 'good', 'ready', 'excited'];
+  const analyze = async () => {
+    if (!text) return;
+    setLoading(true);
+    setError('');
 
-    let score = 50; // Start at neutral
-    const foundWords: string[] = [];
+    try {
+      console.log("🚀 Sending to Python...");
+      
+      const response = await fetch('http://127.0.0.1:5000/analyze_text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text })
+      });
 
-    stressWords.forEach(w => {
-      if (lowerText.includes(w)) { score += 15; foundWords.push(w); }
-    });
-    calmWords.forEach(w => {
-      if (lowerText.includes(w)) { score -= 15; foundWords.push(w); }
-    });
+      const data = await response.json();
+      console.log("✅ Result:", data);
+      
+      setResult({ score: data.score, keywords: data.keywords });
+      onStressUpdate(data.score);
 
-    // Clamp score between 0 and 100
-    const finalScore = Math.min(100, Math.max(0, score));
-    
-    setResult({ score: finalScore, words: foundWords });
-    onStressUpdate(finalScore); // Send this number to the main dashboard
+    } catch (err) {
+      setError("Is the Python Server running? (Run 'python app.py')");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-500">Enter a student message to detect sentiment.</p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">Enter a message to detect sentiment via Python NLP.</p>
+        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded flex items-center gap-1">
+          <Server className="w-3 h-3" /> Python Powered
+        </span>
+      </div>
+
       <div className="flex gap-2">
         <input 
           className="flex-1 border p-2 rounded-lg"
@@ -41,16 +55,25 @@ export function TextAnalyzer({ onStressUpdate }: TextAnalyzerProps) {
           value={text}
           onChange={e => setText(e.target.value)}
         />
-        <button onClick={analyze} className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-          <Search className="w-4 h-4" /> Analyze
+        <button 
+          onClick={analyze} 
+          disabled={loading}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} 
+          Analyze
         </button>
       </div>
 
+      {error && <div className="text-red-500 text-sm">{error}</div>}
+
       {result && (
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="font-semibold text-gray-700">Analysis Result:</div>
+        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 animate-fade-in">
+          <div className="font-semibold text-gray-700">Python Analysis Result:</div>
           <div>Calculated Stress Score: <span className="font-bold text-indigo-600">{result.score}%</span></div>
-          <div className="text-sm text-gray-500 mt-1">Keywords found: {result.words.join(", ") || "None"}</div>
+          <div className="text-sm text-gray-500 mt-1">
+            Prediction Label: {result.keywords.join(", ") || "None"}
+          </div>
         </div>
       )}
     </div>
