@@ -8,14 +8,17 @@ interface DailyEntryProps {
   onEntryComplete: () => void;
 }
 
+// We use empty strings so the inputs start blank (the "vanish" effect)
+const INITIAL_FORM_STATE = {
+  sleep: '',
+  study: '',
+  screen: '',
+  social: '',
+  activity: ''
+};
+
 export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
-  const [formData, setFormData] = useState({
-    sleep: 7,
-    study: 4,
-    screen: 5,
-    social: 2,
-    activity: 1
-  });
+  const [formData, setFormData] = useState<any>(INITIAL_FORM_STATE);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -25,41 +28,39 @@ export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
 
     try {
       // 1. SEND DATA TO PYTHON AI
-      console.log("🚀 Sending metrics to Python for analysis...");
-      
+      // Note: We convert the strings to Numbers here for the AI
+      const payload = {
+        sleep: Number(formData.sleep),
+        study: Number(formData.study),
+        screen: Number(formData.screen),
+        social: Number(formData.social),
+        activity: Number(formData.activity)
+      };
+
       const response = await fetch('http://127.0.0.1:5000/predict_daily', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error("Python Server not responding");
-      }
+      if (!response.ok) throw new Error("Python Server not responding");
 
       const data = await response.json();
       const { stressScore, stressLevel } = data;
       
-      console.log(`✅ AI Predicted: ${stressScore}% (${stressLevel})`);
-
-      // 2. GENERATE REAL TIMESTAMP
       const now = new Date();
       const timeLabel = now.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
       });
 
-      // 3. SAVE TO FIREBASE
+      // 2. SAVE TO FIREBASE
       const newEntry = {
         day: timeLabel,
-        sleepHours: Number(formData.sleep),
-        studyHours: Number(formData.study),
-        screenTime: Number(formData.screen),
-        socialHours: Number(formData.social),
-        physicalActivity: Number(formData.activity),
+        sleepHours: payload.sleep,
+        studyHours: payload.study,
+        screenTime: payload.screen,
+        socialHours: payload.social,
+        physicalActivity: payload.activity,
         stressScore: stressScore,
         stressLevel: stressLevel
       };
@@ -70,7 +71,10 @@ export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
       });
       
       setSuccess(true);
+      setFormData(INITIAL_FORM_STATE); // Resets to blank strings
+
       setTimeout(() => {
+        setSuccess(false);
         onEntryComplete();
       }, 1500);
 
@@ -82,6 +86,13 @@ export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
     }
   };
 
+  // Helper to clear the field specifically when focused if it contains a 0
+  const handleFocus = (field: string) => {
+    if (formData[field] === 0 || formData[field] === '0') {
+      setFormData({ ...formData, [field]: '' });
+    }
+  };
+
   if (success) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-10 text-center animate-fade-in">
@@ -89,7 +100,6 @@ export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
           <CheckCircle className="w-8 h-8 text-green-600" />
         </div>
         <h3 className="text-2xl font-bold text-gray-800">Entry Logged!</h3>
-        <p className="text-gray-500 mt-2">Recorded at {new Date().toLocaleTimeString()}</p>
       </div>
     );
   }
@@ -99,7 +109,7 @@ export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
       <div className="mb-8 flex justify-between items-start">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">📝 Live Check-in</h2>
-          <p className="text-gray-500">Record your current status. AI will analyze it in real-time.</p>
+          <p className="text-gray-500">Record your status. AI analyzes in real-time.</p>
         </div>
         <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded flex items-center gap-1">
           <Server className="w-3 h-3" /> Python AI Connected
@@ -108,35 +118,79 @@ export function DailyEntry({ userId, onEntryComplete }: DailyEntryProps) {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* SLEEP */}
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Moon className="w-4 h-4 text-indigo-500" /> Sleep (Hours)
             </label>
-            <input type="number" step="0.5" min="0" max="24" required className="w-full p-3 border rounded-lg" value={formData.sleep} onChange={e => setFormData({...formData, sleep: Number(e.target.value)})} />
+            <input 
+              type="number" step="0.5" min="0" required 
+              placeholder="e.g. 7"
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+              value={formData.sleep} 
+              onFocus={() => handleFocus('sleep')}
+              onChange={e => setFormData({...formData, sleep: e.target.value})} 
+            />
           </div>
+
+          {/* STUDY */}
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <BookOpen className="w-4 h-4 text-indigo-500" /> Study (Hours)
             </label>
-            <input type="number" step="0.5" min="0" max="24" required className="w-full p-3 border rounded-lg" value={formData.study} onChange={e => setFormData({...formData, study: Number(e.target.value)})} />
+            <input 
+              type="number" step="0.5" min="0" required 
+              placeholder="e.g. 4"
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+              value={formData.study} 
+              onFocus={() => handleFocus('study')}
+              onChange={e => setFormData({...formData, study: e.target.value})} 
+            />
           </div>
+
+          {/* SCREEN */}
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Monitor className="w-4 h-4 text-indigo-500" /> Screen Time (Hours)
             </label>
-            <input type="number" step="0.5" min="0" max="24" required className="w-full p-3 border rounded-lg" value={formData.screen} onChange={e => setFormData({...formData, screen: Number(e.target.value)})} />
+            <input 
+              type="number" step="0.5" min="0" required 
+              placeholder="e.g. 5"
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+              value={formData.screen} 
+              onFocus={() => handleFocus('screen')}
+              onChange={e => setFormData({...formData, screen: e.target.value})} 
+            />
           </div>
+
+          {/* ACTIVITY */}
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Activity className="w-4 h-4 text-indigo-500" /> Activity (Hours)
             </label>
-            <input type="number" step="0.5" min="0" max="24" required className="w-full p-3 border rounded-lg" value={formData.activity} onChange={e => setFormData({...formData, activity: Number(e.target.value)})} />
+            <input 
+              type="number" step="0.5" min="0" required 
+              placeholder="e.g. 1"
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+              value={formData.activity} 
+              onFocus={() => handleFocus('activity')}
+              onChange={e => setFormData({...formData, activity: e.target.value})} 
+            />
           </div>
+
+          {/* SOCIAL */}
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Users className="w-4 h-4 text-indigo-500" /> Social (Hours)
             </label>
-            <input type="number" step="0.5" min="0" max="24" required className="w-full p-3 border rounded-lg" value={formData.social} onChange={e => setFormData({...formData, social: Number(e.target.value)})} />
+            <input 
+              type="number" step="0.5" min="0" required 
+              placeholder="e.g. 2"
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+              value={formData.social} 
+              onFocus={() => handleFocus('social')}
+              onChange={e => setFormData({...formData, social: e.target.value})} 
+            />
           </div>
         </div>
 

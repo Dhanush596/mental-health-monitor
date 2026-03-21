@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Activity, LogOut, Calendar } from 'lucide-react'; // Added Calendar icon
+import { Activity, LogOut, Calendar } from 'lucide-react'; 
 import { auth, db } from './firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 import { StressLevelIndicator } from './components/StressLevelIndicator';
 import { TextAnalyzer } from './components/TextAnalyzer';
-import { SpeechAnalyzer } from './components/SpeechAnalyzer';
+// SpeechAnalyzer import removed
 import { WearableData } from './components/WearableData';
-// Removed TrendsChart to hide raw dataset details
 import { WellnessRadar } from './components/WellnessRadar';
 import { Recommendations } from './components/Recommendations';
 import { AlertSystem } from './components/AlertSystem';
@@ -124,13 +123,13 @@ function App() {
           <button onClick={() => setActiveTab('dashboard')} className={`flex-1 py-3 px-4 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md transform scale-[1.02]' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📊 Command Center</button>
           <button onClick={() => setActiveTab('entry')} className={`flex-1 py-3 px-4 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'entry' ? 'bg-indigo-600 text-white shadow-md transform scale-[1.02]' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📝 Daily Check-in</button>
           <button onClick={() => setActiveTab('text')} className={`flex-1 py-3 px-4 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'text' ? 'bg-indigo-600 text-white shadow-md transform scale-[1.02]' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>💬 Text Analysis</button>
-          <button onClick={() => setActiveTab('speech')} className={`flex-1 py-3 px-4 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'speech' ? 'bg-indigo-600 text-white shadow-md transform scale-[1.02]' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>🎙️ Speech Analysis</button>
+          {/* Speech Analysis Button Removed */}
         </div>
 
         {/* --- DASHBOARD --- */}
         {activeTab === 'dashboard' && (
           <>
-            {/* CLEANER TIMELINE (No "Record X/Y" text) */}
+            {/* UPDATED JOURNEY SECTION */}
             {history.length > 0 && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8 transition-all hover:shadow-md">
                 <div className="flex justify-between items-center mb-4">
@@ -140,15 +139,18 @@ function App() {
                      </div>
                      <div>
                        <h2 className="text-lg font-bold text-gray-800">Your Journey</h2>
-                       <div className="text-sm text-indigo-600 font-bold">{currentDayData.day}</div>
+                       <div className="text-sm text-indigo-600 font-bold">
+                         {customStressScore !== null ? "🔴 Live Analysis Result" : currentDayData.day}
+                       </div>
                      </div>
                   </div>
                   
-                  <span className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm ${
+                  {/* Fixed Threshold: Changed 40 to 30 to align with Gauge colors */}
+                  <span className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors ${
                        displayScore > 70 ? 'bg-red-50 text-red-700 border border-red-100' : 
-                       displayScore > 40 ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' : 'bg-green-50 text-green-700 border border-green-100'
+                       displayScore > 30 ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' : 'bg-green-50 text-green-700 border border-green-100'
                      }`}>
-                       {displayScore > 70 ? 'High Stress' : displayScore > 40 ? 'Moderate Stress' : 'Low Stress'}
+                       {displayScore > 70 ? 'High Stress' : displayScore > 30 ? 'Moderate Stress' : 'Low Stress'}
                   </span>
                 </div>
                 
@@ -205,8 +207,13 @@ function App() {
 
         {/* --- OTHER TABS --- */}
         {activeTab === 'entry' && <DailyEntry userId={user.uid} onEntryComplete={() => { refreshData(); setActiveTab('dashboard'); }} />}
-        {activeTab === 'text' && <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl border border-gray-200 shadow-lg"><h2 className="text-2xl font-bold text-gray-800 mb-2">NLP Sentiment Analysis</h2><p className="text-gray-500 mb-6">Uses Python & Scikit-Learn.</p><TextAnalyzer onStressUpdate={handleLiveAnalysis} /></div>}
-        {activeTab === 'speech' && <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl border border-gray-200 shadow-lg"><h2 className="text-2xl font-bold text-gray-800 mb-2">Voice Tone Analyzer</h2><p className="text-gray-500 mb-6">Analyzes pitch and frequency.</p><SpeechAnalyzer onStressUpdate={handleLiveAnalysis} /></div>}
+        {activeTab === 'text' && (
+          <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl border border-gray-200 shadow-lg">
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">NLP Sentiment Analysis</h2>
+            <p className="text-gray-500 mb-6">Uses Python & Scikit-Learn.</p>
+            <TextAnalyzer onStressUpdate={handleLiveAnalysis} />
+          </div>
+        )}
 
       </main>
     </div>

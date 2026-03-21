@@ -2,111 +2,130 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import joblib
 import os
+import nltk
+from textblob import TextBlob
 
-# 1. SETUP FLASK
+# --- 1. INITIALIZATION ---
+# This ensures NLP data is downloaded so the server doesn't hang
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
 app = Flask(__name__)
-CORS(app)
+CORS(app) # Allows React to communicate with Python
 
-# 2. LOAD TEXT AI MODEL
-text_model_path = 'stress_model.pkl'
-if os.path.exists(text_model_path):
-    try:
-        text_model = joblib.load(text_model_path)
-        print("✅ Custom Text AI Model Loaded!")
-    except:
-        text_model = None
-else:
-    print("⚠️ Text Model not found.")
-    text_model = None
+# --- 2. LOAD ML MODELS ---
+def load_model(path, name):
+    if os.path.exists(path):
+        try:
+            return joblib.load(path)
+        except Exception as e:
+            print(f"⚠️ {name} Load Warning: {e}")
+    return None
 
-# 3. LOAD NUMERICAL AI MODEL
-num_model_path = 'numerical_model.pkl'
-if os.path.exists(num_model_path):
-    try:
-        num_model = joblib.load(num_model_path)
-        print("✅ Numerical AI Model Loaded!")
-    except:
-        num_model = None
-else:
-    print("⚠️ Numerical Model not found.")
-    num_model = None
+text_ml = load_model('stress_model.pkl', 'Text AI')
+num_ml = load_model('numerical_model.pkl', 'Numerical AI')
 
-@app.route('/')
-def home():
-    return "✅ Python AI Server is running!"
-
-# --- ROUTE 1: TEXT ANALYSIS ---
+# --- 3. TEXT ANALYSIS ROUTE ---
 @app.route('/analyze_text', methods=['POST'])
 def analyze_text():
-    print("--- TEXT REQUEST RECEIVED ---")
     data = request.json
     text = data.get('text', '').lower()
+    
+    # Critical: If no text, return empty but valid structure to prevent React crash
+    if not text: 
+        return jsonify({"score": 0, "level": "Low", "keywords": []})
 
-    prediction = "Low"
-    confidence = 0
+    # A. NLP Sentiment (TextBlob)
+    analysis = TextBlob(text)
+    sentiment_base = 50 - (analysis.sentiment.polarity * 50)
 
-    # 1. AI PREDICTION
-    if text_model:
+    # B. Daily Conversation Weighted Keywords
+    stress_markers = {
+        'fail': 20, 'backlog': 25, 'viva': 20, 'exam': 15, 'deadline': 15,
+        'depressed': 30, 'anxious': 25, 'exhausted': 20, 'insomnia': 20, 
+        'stress': 10, 'marks': 10, 'sad': 10, 'angry': 10
+    }
+    
+    found_keywords = [word for word in stress_markers if word in text]
+    keyword_score = sum(stress_markers[word] for word in found_keywords)
+
+    # C. ML Prediction Fallback
+    ml_boost = 0
+    if text_ml:
         try:
-            prediction = text_model.predict([text])[0]
-            proba = text_model.predict_proba([text])[0]
-            confidence = int(max(proba) * 100)
-        except:
-            pass
+            pred = text_ml.predict([text])[0]
+            if str(pred).lower() == "high": ml_boost = 25
+        except: pass
 
-    # 2. SAFETY NET
-    danger_words = ['suicide', 'kill', 'die', 'death', 'panic', 'terror', 'fail', 'hopeless', 'stress', 'anxiety', 'anxious', 'afraid', 'scared', 'cry', 'crying', 'terrified', 'overwhelmed', 'nervous', 'worry', 'worried', 'bad', 'sad', 'terrible', 'awful', 'nothing', 'empty', 'numb', 'pain']
+    # D. Final Hybrid Score calculation
+    final_score = max(5, min(99, sentiment_base + keyword_score + ml_boost))
     
-    if any(word in text for word in danger_words):
-        print(f"⚠️ Safety Net Triggered!")
-        prediction = "High"
-        confidence = 95
+    # E. Safety Net Override
+    if any(w in text for w in ['suicide', 'kill', 'hurt myself', 'end my life']):
+        final_score = 99
 
-    # 3. SCORE
-    label = str(prediction).lower()
-    if label == "high": score = 75 + int(confidence / 5)
-    elif label == "medium": score = 45 + int(confidence / 5)
-    else: score = 25 - int(confidence / 10)
-    
-    score = max(0, min(100, score))
-    return jsonify({ "score": score, "keywords": [label] })
+    level = "High" if final_score > 70 else "Moderate" if final_score > 40 else "Low"
 
-# --- ROUTE 2: NUMERICAL ANALYSIS (DAILY ENTRY) ---
+    print(f"📝 Text Result: {int(final_score)}% | Level: {level}")
+
+    # Return structure that matches your TextAnalyzer.tsx expectations
+    return jsonify({
+        "score": int(final_score), 
+        "level": level, 
+        "keywords": found_keywords[:3] 
+    })
+
+# --- 4. DAILY CHECK-IN ROUTE ---
 @app.route('/predict_daily', methods=['POST'])
 def predict_daily():
-    print("--- DAILY ENTRY REQUEST RECEIVED ---")
     data = request.json
     
-    features = [
-        float(data.get('study', 0)),
-        float(data.get('sleep', 0)),
-        float(data.get('screen', 0)),
-        float(data.get('social', 0)),
-        float(data.get('activity', 0))
-    ]
+    # Match the keys from your DailyEntry.tsx payload
+    sleep = float(data.get('sleep', 0))
+    study = float(data.get('study', 0))
+    screen = float(data.get('screen', 0))
+    social = float(data.get('social', 0))
+    activity = float(data.get('activity', 0))
 
-    if not num_model:
-        return jsonify({"error": "Numerical model not trained"}), 500
+    # A. ML Base Score from Numerical Model
+    score = 45 # Default
+    if num_ml:
+        try:
+            # Note: Ensure features are in the same order as trained
+            score = int(num_ml.predict([[study, sleep, screen, social, activity]])[0])
+        except: pass
 
-    # AI PREDICTION
-    try:
-        prediction = num_model.predict([features])[0]
-        score = int(prediction)
-        
-        if score > 70: level = "High"
-        elif score > 30: level = "Medium"
-        else: level = "Low"
+    # B. Domain-Specific Sensitivity Guards (God Mode)
+    if sleep < 6: 
+        score += 20
+        print("🚩 Low Sleep Penalty (+20)")
+    if screen > 10: 
+        score += 25
+        print("🚩 High Screen Penalty (+25)")
+    if social < 2: 
+        score += 10
+        print("🚩 Isolation Penalty (+10)")
+    if activity > 2: 
+        score -= 15
+        print("🟢 High Activity Bonus (-15)")
 
-        print(f"Input: {features} -> Score: {score} ({level})")
-        
-        return jsonify({
-            "stressScore": score,
-            "stressLevel": level
-        })
-    except Exception as e:
-        print("Error predicting:", e)
-        return jsonify({"error": str(e)}), 500
+    # C. Final Result Mapping
+    final_score = max(5, min(98, score))
+    
+    # Match frontend status badge colors
+    if final_score > 70: level = "High"
+    elif final_score > 35: level = "Moderate"
+    else: level = "Low"
+
+    print(f"✅ Daily Result: {final_score}% | Level: {level}")
+    
+    return jsonify({
+        "stressScore": int(final_score),
+        "stressLevel": level
+    })
 
 if __name__ == '__main__':
-    print("🐍 Python AI Server is running on port 5000...")
-    app.run(debug=True, port=5000)
+    print("🚀 Ultimate ML Backend running on http://127.0.0.1:5000")
+    app.run(port=5000, debug=True)
