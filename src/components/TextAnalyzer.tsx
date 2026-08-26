@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Trash2, MessageSquare, Sparkles, RefreshCw } from 'lucide-react';
+import { Send, Bot, Trash2, MessageSquare, Sparkles, RefreshCw } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase'; 
 
